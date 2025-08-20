@@ -1,0 +1,5 @@
+{
+  "name": "AI Quiz Generator",
+  "description": "An intelligent application that generates educational quizzes from provided text. Users input source material and specify parameters like the number of questions and difficulty, and the app uses an AI model to create a multiple-choice quiz with justifications for each answer.",
+  "requestFramePermissions": []
+}
