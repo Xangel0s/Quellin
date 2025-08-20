@@ -6,6 +6,7 @@ import Spinner from '../components/Spinner';
 import { QuillanLogo } from '../components/icons';
 import { UserCircleIcon, CheckIcon } from '../components/icons';
 import RegistrationSuccessModal from '../components/RegistrationSuccessModal';
+import ProfileModal from '../components/ProfileModal';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { signIn, signUp, resendConfirmation, loading, error, setError } = useAuth();
 
@@ -50,12 +52,16 @@ export default function LoginPage() {
       const success = await signUp(email, password);
       if (success) {
         setShowSuccessModal(true);
+        setShowProfileModal(true); // Mostrar modal de perfil tras registro
       }
     } else {
       await signIn(email, password);
     }
   };
   
+  // Mostrar modal de edición de perfil tras registro exitoso
+  // Puedes usar el componente ProfileModal o crear uno nuevo para el cuestionario inicial
+
   const PasswordRequirement: React.FC<{met: boolean; text: string}> = ({met, text}) => (
     <div className={`flex items-center text-xs transition-colors ${met ? 'text-green-600' : 'text-slate-500'}`}>
         <CheckIcon className={`w-3.5 h-3.5 mr-1.5 ${met ? 'opacity-100' : 'opacity-40'}`} />
@@ -63,9 +69,11 @@ export default function LoginPage() {
     </div>
   );
 
-  if (showSuccessModal) {
+  if (showSuccessModal || showProfileModal) {
     return (
-        <RegistrationSuccessModal 
+      <>
+        {showSuccessModal && (
+          <RegistrationSuccessModal 
             email={email}
             onClose={() => {
                 setShowSuccessModal(false);
@@ -75,8 +83,13 @@ export default function LoginPage() {
                 setConfirmPassword('');
             }}
             onResend={() => resendConfirmation(email)}
-        />
-    )
+          />
+        )}
+        {showProfileModal && (
+          <ProfileModal />
+        )}
+      </>
+    );
   }
 
   return (

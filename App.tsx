@@ -4,6 +4,7 @@ import React from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Spinner from './components/Spinner';
+import GlobalLoader from './components/GlobalLoader';
 import { ToastContainer } from './components/Toast';
 import { useAuth } from './contexts/AuthContext';
 import { useUI } from './contexts/UIContext';
@@ -42,6 +43,13 @@ const App: React.FC = () => {
 
   const { getSubmissionsForContent, submissions, loading: dataLoading } = useData();
 
+    // Hide the static index.html global loader as soon as React mounts so our
+    // in-React loader (GlobalLoader) can take over and match the welcome animation.
+    React.useEffect(() => {
+        const loader = document.getElementById('global-loader');
+        if (loader) loader.classList.add('hidden');
+    }, []);
+
   React.useEffect(() => {
       if (!authLoading && !dataLoading) {
           const loader = document.getElementById('global-loader');
@@ -69,9 +77,34 @@ const App: React.FC = () => {
     }
   }, [contentForAnalytics, getSubmissionsForContent]);
   
-  if (authLoading || (currentUser && dataLoading)) {
-    return null; // The global loader in index.html is handling the loading state
-  }
+        const [showWelcomeLoader, setShowWelcomeLoader] = React.useState(false);
+
+        // When authLoading becomes true, show the welcome loader for a min duration
+        React.useEffect(() => {
+            let t: any;
+            if (authLoading) {
+                setShowWelcomeLoader(true);
+                // Keep welcome loader visible for at least 1.5s
+                t = setTimeout(() => setShowWelcomeLoader(false), 1500);
+            } else {
+                setShowWelcomeLoader(false);
+            }
+            return () => clearTimeout(t);
+        }, [authLoading]);
+
+        if (authLoading && showWelcomeLoader) {
+                // Show the app's global welcome loader while auth check completes
+                return <GlobalLoader large />;
+        }
+
+        if (currentUser && dataLoading) {
+        // Keep showing a centered spinner while the authenticated user's data loads
+        return (
+            <div className="w-full h-screen flex items-center justify-center bg-slate-50">
+                <Spinner large />
+            </div>
+        );
+    }
 
   const renderAuthenticatedView = () => {
     let currentPage;

@@ -6,15 +6,19 @@ import { createClient, PostgrestError } from '@supabase/supabase-js';
 import type { User, CreatorProfile, Quiz, InteractiveCourse, StoredContentItem, Submission, Community, Comment, PublishedPost, Attachment } from '../types';
 
 // Read Supabase credentials from environment variables
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL;
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL ?? '';
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY ?? '';
 
-// This is the standard, secure way to handle secrets in a frontend application.
-// In local development, these are loaded from a `.env` file.
-// In production (e.g., Netlify), these are set in the hosting provider's UI.
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Supabase URL and Anon Key must be provided in environment variables.");
+  // Mostrar advertencia clara en consola, pero no romper toda la app
+  console.error('[Supabase] ERROR: Las variables VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están definidas. Revisa tu archivo .env.local y reinicia Vite.');
 }
+
+console.debug('[Supabase] VITE_SUPABASE_URL:', supabaseUrl);
+console.debug('[Supabase] VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? '[OK]' : '[FALTA]');
+
+// Inicialización única y lista para producción
+const supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey);
 
 export interface Database {
   public: {
@@ -197,7 +201,13 @@ export interface Database {
   }
 }
 
-const supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey);
+// ...existing code...
+// Debug: surface the configured Supabase URL at startup (doesn't log the anon key)
+try {
+  console.debug('[Supabase] configured URL:', supabaseUrl);
+} catch (e) {
+  // no-op
+}
 
 const createDefaultProfile = (email: string): CreatorProfile => ({
     name: email.split('@')[0],
@@ -234,32 +244,40 @@ const supabase = {
     // --- AUTH ---
     async getUser(): Promise<{ data: User | null; error: Error | null }> {
       const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError) return { data: null, error: sessionError };
-      if (!session || !session.user.email) return { data: null, error: null };
-      
-      const { id: userId, email: userEmail } = session.user;
-
-      const { data: profileData, error: profileError } = await safeQuery<{ id: string, profile: CreatorProfile }>(
-        supabaseClient.from('profiles').select('id, profile').eq('id', userId).single()
-      );
-
-      if (profileError && profileError.code !== 'PGRST116') {
-        return { data: null, error: new Error(profileError.message) };
-      }
-      
-      if (!profileData || !profileData.profile) {
-        const defaultProfile = createDefaultProfile(userEmail);
-        const { data: newProfileData, error: insertError } = await safeQuery<{ id: string, profile: CreatorProfile }>(
-          supabaseClient.from('profiles').upsert({ id: userId, profile: defaultProfile }).select('id, profile').single()
+      console.debug('[Supabase] getUser: calling auth.getSession()');
+      try {
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+        console.debug('[Supabase] getUser: getSession returned', { sessionExists: !!session, sessionError: !!sessionError });
+        if (sessionError) return { data: null, error: sessionError };
+        if (!session || !session.user.email) return { data: null, error: null };
+        
+        const { id: userId, email: userEmail } = session.user;
+        
+        const { data: profileData, error: profileError } = await safeQuery<{ id: string, profile: CreatorProfile }>(
+          supabaseClient.from('profiles').select('id, profile').eq('id', userId).single()
         );
         
-        if (insertError || !newProfileData) {
-            return { data: null, error: new Error(insertError?.message || 'Failed to create profile') };
+        if (profileError && profileError.code !== 'PGRST116') {
+          return { data: null, error: new Error(profileError.message) };
         }
-        return { data: { id: userId, email: userEmail, profile: newProfileData.profile }, error: null };
+        
+        if (!profileData || !profileData.profile) {
+          const defaultProfile = createDefaultProfile(userEmail);
+          const { data: newProfileData, error: insertError } = await safeQuery<{ id: string, profile: CreatorProfile }>(
+            supabaseClient.from('profiles').upsert({ id: userId, profile: defaultProfile }).select('id, profile').single()
+          );
+          
+          if (insertError || !newProfileData) {
+              return { data: null, error: new Error(insertError?.message || 'Failed to create profile') };
+          }
+          return { data: { id: userId, email: userEmail, profile: newProfileData.profile }, error: null };
+        }
+        
+        return { data: { id: userId, email: userEmail, profile: profileData.profile }, error: null };
+      } catch (err: any) {
+        console.error('[Supabase] getUser: unexpected error', err);
+        return { data: null, error: err };
       }
-
-      return { data: { id: userId, email: userEmail, profile: profileData.profile }, error: null };
     },
     async signUp(email: string, password: string) {
         return supabaseClient.auth.signUp({ 

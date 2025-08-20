@@ -28,16 +28,58 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     useEffect(() => {
         const checkUser = async () => {
+            console.debug('[Auth] checkUser: start');
             setLoading(true);
-            const { data, error } = await supabase.getUser();
-            if (data) setCurrentUser(data);
-            if (error) console.error("Auth check error:", error);
+            let attempt = 0;
+            const maxAttempts = 2;
+            let finalError: any = null;
+
+            while (attempt < maxAttempts) {
+                attempt += 1;
+                try {
+                    // Prevent hanging indefinitely if Supabase doesn't respond
+                    const timeout = new Promise<{ data: any; error: Error | null }>((resolve) => {
+                        setTimeout(() => resolve({ data: null, error: new Error('Auth check timed out') }), 8000);
+                    });
+
+                    const result = await Promise.race([supabase.getUser(), timeout]);
+                    console.debug('[Auth] checkUser: attempt', attempt, 'result', result);
+                    const { data, error } = result as { data: any; error: any };
+                    if (data) {
+                        setCurrentUser(data);
+                        finalError = null;
+                        break;
+                    }
+                    if (error) {
+                        finalError = error;
+                        console.warn('[Auth] checkUser attempt error:', error);
+                    }
+                } catch (err) {
+                    finalError = err;
+                    console.error('Unexpected error during auth check attempt:', attempt, err);
+                }
+
+                if (attempt < maxAttempts) {
+                    // wait a little before retrying
+                    await new Promise((r) => setTimeout(r, 1000));
+                    console.debug('[Auth] retrying auth check (attempt', attempt + 1, ')');
+                }
+            }
+
+            // Only show the toast after all attempts failed
+            if (finalError) {
+                console.error('Auth check error:', finalError);
+                addToast('No se pudo verificar la sesión. Revisa tu conexión.', 'error');
+            }
+
             setLoading(false);
+            console.debug('[Auth] checkUser: finished (loading=false)');
         };
         checkUser();
 
         const { data: authListener } = supabase.client.auth.onAuthStateChange(
             async (event, session) => {
+                console.debug('[Auth] authListener event', event, session);
                 if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
                     const { data } = await supabase.getUser();
                     setCurrentUser(data);
@@ -49,7 +91,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         );
 
         return () => {
-            authListener.subscription.unsubscribe();
+            try {
+                // Be defensive: subscription may not exist if supabase failed to initialize
+                (authListener as any)?.subscription?.unsubscribe?.();
+            } catch (e) {
+                console.debug('No auth listener to unsubscribe or error during unsubscribe', e);
+            }
         };
     }, []);
 
@@ -101,8 +148,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              setLoading(false);
              return false;
         }
-        const { data: updatedUser } = await supabase.getUser();
-        setCurrentUser(updatedUser);
+        // Refresca la sesión y el usuario para asegurar que el avatar y datos se actualicen en todos los componentes
+        const { data: sessionData } = await supabase.client.auth.getSession();
+        if (sessionData?.session?.user?.id) {
+            const { data: updatedUser } = await supabase.getUser();
+            setCurrentUser(updatedUser);
+        }
         addToast('Perfil actualizado con éxito!', 'success');
         setLoading(false);
         return true;

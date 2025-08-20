@@ -29,7 +29,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user }) => {
         <div className="max-w-4xl mx-auto">
             <div className="mb-6">
                  <button onClick={handleBack} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                     </svg>
                     Volver

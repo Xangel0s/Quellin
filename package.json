@@ -9,14 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "@google/genai": "^1.15.0",
+    "@supabase/supabase-js": "2.44.4",
     "pdfjs-dist": "4.5.136",
-    "@supabase/supabase-js": "2.44.4"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/node": "^22.17.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
