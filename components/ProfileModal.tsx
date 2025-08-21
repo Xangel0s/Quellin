@@ -11,6 +11,7 @@ import { UserIcon } from './icons';
 import Spinner from './Spinner';
 import { useAuth } from '../contexts/AuthContext';
 import { useUI } from '../contexts/UIContext';
+import { auth } from '../services/firebase';
 
 const avatarColors = [
     'bg-slate-500', 'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-yellow-500',
@@ -23,16 +24,25 @@ type View = 'profile' | 'security';
 
 const ProfileModal: React.FC = () => {
     const { currentUser, updateUserProfile, updatePassword, loading, error, setError } = useAuth();
-    const { closeAllModals } = useUI();
+    const { closeAllModals, isProfileModalOpen, addToast } = useUI();
 
     const [view, setView] = useState<View>('profile');
-    const [profile, setProfile] = useState<CreatorProfile | null>(currentUser?.profile || null);
+    const defaultProfile: CreatorProfile = currentUser?.profile || {
+        name: '',
+        bio: '',
+        avatar: { color: avatarColors[0], initials: '' },
+        plan: 'free',
+        certificate_uses_left: 0,
+    };
+    const [profile, setProfile] = useState<CreatorProfile | null>(defaultProfile);
     
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
-    if (!profile || !currentUser) return null;
+    // Allow modal to open when user exists but profile may be null (new user flow)
+    if (!currentUser) return null;
+    if (!isProfileModalOpen) return null;
 
     const handleSaveProfile = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,6 +51,16 @@ const ProfileModal: React.FC = () => {
             const initials = profile.name.trim().charAt(0).toUpperCase();
             const success = await updateUserProfile({ ...profile, name: profile.name.trim(), avatar: { ...profile.avatar, initials } });
             if (success) {
+                // After creating profile, send verification email to the user
+                try {
+                    const { sendEmailVerification } = await import('firebase/auth');
+                    if (auth.currentUser) {
+                        await sendEmailVerification(auth.currentUser);
+                        addToast('Correo de verificación enviado. Revisa tu bandeja.', 'success');
+                    }
+                } catch (err: any) {
+                    addToast('No se pudo enviar el correo de verificación: ' + (err?.message || ''), 'error');
+                }
                 closeAllModals();
             }
         } else {

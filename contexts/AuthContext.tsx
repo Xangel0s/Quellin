@@ -143,9 +143,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const updateUserProfile = async (profile: CreatorProfile): Promise<boolean> => {
-        // Aquí deberás implementar la lógica para actualizar el perfil en Firebase Database o Firestore
-        addToast('Perfil actualizado con éxito!', 'success');
-        return true;
+        if (!auth.currentUser) {
+            setError('No hay usuario autenticado.');
+            return false;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+            const { ref, set } = await import('firebase/database');
+            await set(ref(db, `profiles/${auth.currentUser.uid}`), profile);
+            // Update local state and localStorage
+            const updated = {
+                ...(currentUser || {}),
+                profile,
+            };
+            setCurrentUser(updated);
+            saveUserToLocalStorage(updated);
+            addToast('Perfil actualizado con éxito!', 'success');
+            setLoading(false);
+            return true;
+        } catch (err: any) {
+            setError(err?.message || 'Error al guardar el perfil.');
+            addToast('No se pudo guardar el perfil: ' + (err?.message || ''), 'error');
+            setLoading(false);
+            return false;
+        }
     };
 
     const updatePassword = async (newPass: string): Promise<boolean> => {
