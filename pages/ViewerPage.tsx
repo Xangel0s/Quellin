@@ -19,8 +19,9 @@ interface ViewerPageProps {
 }
 
 const ViewerPage: React.FC<ViewerPageProps> = ({ contentId }) => {
-    const { navigate } = useUI();
-    const { createSubmission } = useData();
+  const { navigate } = useUI();
+  const data = useData();
+  const { createSubmission } = data;
     const { currentUser } = useAuth();
 
     const [content, setContent] = useState<PublishedPost | StoredContentItem | null>(null);
@@ -34,18 +35,18 @@ const ViewerPage: React.FC<ViewerPageProps> = ({ contentId }) => {
   useEffect(() => {
     setLoading(true);
     // Buscar el contenido en publishedPosts y contentItems del DataContext
-    let foundContent = null;
-    let foundAuthor = null;
+    let foundContent: PublishedPost | StoredContentItem | null = null;
+    let foundAuthor: User | null = null;
     // Buscar en publishedPosts
     if (contentId && typeof contentId === 'string') {
-      const posts = useData().publishedPosts;
+      const posts = data.publishedPosts || [];
       foundContent = posts.find(post => post.id === contentId) || null;
       if (foundContent && 'author' in foundContent) {
-        foundAuthor = foundContent.author;
+        foundAuthor = foundContent.author as User;
       }
       // Si no se encuentra en publishedPosts, buscar en contentItems
       if (!foundContent) {
-        const items = useData().contentItems;
+        const items = data.contentItems || [];
         foundContent = items.find(item => item.id === contentId) || null;
         // El autor se puede buscar en la comunidad o dejar null
       }
@@ -53,7 +54,7 @@ const ViewerPage: React.FC<ViewerPageProps> = ({ contentId }) => {
     setContent(foundContent);
     setAuthor(foundAuthor);
     setLoading(false);
-  }, [contentId, useData]);
+  }, [contentId, data.publishedPosts, data.contentItems]);
 
     if(loading) {
         return <div className="flex h-screen items-center justify-center"><Spinner large /></div>;
