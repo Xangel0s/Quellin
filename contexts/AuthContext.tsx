@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [currentUser, setCurrentUser] = useState<any>(getUserFromLocalStorage());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { addToast } = useUI();
+    const { addToast, openProfileModal } = useUI();
        const [showProfileModal, setShowProfileModal] = useState(false);
 
     useEffect(() => {
@@ -60,9 +60,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 };
                 setCurrentUser(userObj);
                 saveUserToLocalStorage(userObj);
-                // Si el usuario está verificado pero no tiene perfil, mostrar modal de perfil
+                // Si el usuario está verificado pero no tiene perfil, abrir modal de perfil
                 if (user.emailVerified && !profile) {
                     setShowProfileModal(true);
+                    try { openProfileModal(); } catch {}
                 }
             } else {
                 setCurrentUser(null);
