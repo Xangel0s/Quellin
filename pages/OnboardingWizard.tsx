@@ -28,7 +28,7 @@ const OnboardingWizard: React.FC = () => {
   const [profileCreated, setProfileCreated] = useState(false);
 
   const handleNext = async () => {
-    if (step === 1) {
+  if (step === 1) {
       setLoading(true);
       try {
         const { set, ref } = await import('firebase/database');
@@ -50,6 +50,23 @@ const OnboardingWizard: React.FC = () => {
       }
       setLoading(false);
     }
+    // Si estamos en el paso final (preview -> crear usuario), enviar correo y redirigir
+    if (step === 2) {
+      // Intentar enviar el correo de verificación inmediatamente si hay usuario autenticado
+      try {
+        const { sendEmailVerification } = await import('firebase/auth');
+        if (auth.currentUser) {
+          const actionCodeSettings = { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
+          await sendEmailVerification(auth.currentUser, actionCodeSettings);
+        }
+      } catch (e) {
+        // no bloqueante: el App mostrará la UI de verificación y permitirá reintentos
+      }
+      // Redirigir fuera del wizard para usar la página de verificación antigua gestionada por App
+      window.location.hash = '';
+      return;
+    }
+
     setStep(step + 1);
   };
 
