@@ -1,6 +1,7 @@
 
 
 import React from 'react';
+import { auth } from './services/firebase';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Spinner from './components/Spinner';
@@ -25,48 +26,151 @@ const CreateCommunityModal = React.lazy(() => import('./components/CreateCommuni
 const UpgradeModal = React.lazy(() => import('./components/UpgradeModal'));
 
 const App: React.FC = () => {
-    const CompleteProfilePage = React.lazy(() => import('./pages/CompleteProfilePage'));
-  const { currentUser, loading: authLoading } = useAuth();
-  const { 
-    view, 
-    contentForViewer, 
-    contentForAnalytics,
-    activeCommunity,
-    viewedProfile,
-    communityToEdit,
-    isProfileModalOpen,
-    isCreateCommunityModalOpen,
-    isUpgradeModalOpen,
-    upgradeReason,
-    closeAllModals,
-    navigate
-  } = useUI();
-
-  const { getSubmissionsForContent, submissions, loading: dataLoading } = useData();
-
-    // Routing por hash para completar perfil
+    // Hooks siempre al inicio
+    const [canResend, setCanResend] = React.useState(true);
+    const [resendMsg, setResendMsg] = React.useState('');
+    const handleResend = async () => {
+        setCanResend(false);
+        setResendMsg('Enviando...');
+        try {
+            const { sendEmailVerification } = await import('firebase/auth');
+            await sendEmailVerification(auth.currentUser);
+            setResendMsg('Correo reenviado ✔');
+        } catch {
+            setResendMsg('No se pudo reenviar el correo.');
+        }
+        setTimeout(() => {
+            setCanResend(true);
+            setResendMsg('');
+        }, 30000); // 30 segundos de espera
+    };
+    const OnboardingWizard = React.lazy(() => import('./pages/OnboardingWizard'));
+    const { currentUser, loading: authLoading } = useAuth();
+    const { 
+        view, 
+        contentForViewer, 
+        contentForAnalytics,
+        activeCommunity,
+        viewedProfile,
+        communityToEdit,
+        isProfileModalOpen,
+        isCreateCommunityModalOpen,
+        isUpgradeModalOpen,
+        upgradeReason,
+        closeAllModals,
+        navigate
+    } = useUI();
+    const { getSubmissionsForContent, submissions, loading: dataLoading } = useData();
     const hash = window.location.hash;
-    if (hash === '#complete-profile') {
+    const [showWelcomeLoader, setShowWelcomeLoader] = React.useState(false);
+
+    // Efectos
+    React.useEffect(() => {
+        const loader = document.getElementById('global-loader');
+        if (loader) loader.classList.add('hidden');
+    }, []);
+
+    React.useEffect(() => {
+        if (!authLoading && !dataLoading) {
+            const loader = document.getElementById('global-loader');
+            if (loader) {
+                loader.classList.add('hidden');
+            }
+        }
+    }, [authLoading, dataLoading]);
+
+    React.useEffect(() => {
+        const hash = window.location.hash;
+        if (!currentUser && hash.startsWith('#view/')) {
+            const contentId = hash.substring(6);
+            // Initial load for non-logged-in viewer
+            navigate('viewer', contentId);
+        } else if (currentUser && hash) {
+            window.location.hash = '';
+        }
+    }, [currentUser, navigate]);
+
+    React.useEffect(() => {
+        if (contentForAnalytics) {
+            getSubmissionsForContent(contentForAnalytics.id);
+        }
+    }, [contentForAnalytics, getSubmissionsForContent]);
+
+    // Loader welcome
+    React.useEffect(() => {
+        let t: any;
+        if (authLoading) {
+            setShowWelcomeLoader(true);
+            t = setTimeout(() => setShowWelcomeLoader(false), 1500);
+        } else {
+            setShowWelcomeLoader(false);
+        }
+        return () => clearTimeout(t);
+    }, [authLoading]);
+
+    // Returns condicionales después de hooks
+    if (hash === '#onboarding') {
         return <React.Suspense fallback={<Spinner large />}>
-            <CompleteProfilePage />
+            <OnboardingWizard />
         </React.Suspense>;
     }
 
     // Bloquear acceso si el email no está verificado
-    if (currentUser && currentUser.email && window.location.hash !== '#complete-profile' && window.location.hash !== '#view/' && window.location.hash !== '#login') {
+    if (currentUser && currentUser.email && window.location.hash !== '#onboarding' && window.location.hash !== '#view/' && window.location.hash !== '#login') {
         // auth.currentUser puede ser null en algunos reloads, así que verifica emailVerified solo si existe
         const isVerified = typeof window !== 'undefined' && window.localStorage.getItem('quellin.currentUser') && (window.localStorage.getItem('quellin.currentUser').includes('emailVerified') ? JSON.parse(window.localStorage.getItem('quellin.currentUser') || '{}').emailVerified : (typeof auth !== 'undefined' && auth.currentUser ? auth.currentUser.emailVerified : false));
         if (!isVerified) {
+            // Solo render condicional, hooks ya están arriba
             return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
                     <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
                         <h2 className="text-2xl font-bold mb-4 text-teal-700">Verifica tu correo</h2>
-                        <p className="mb-4 text-slate-700 text-center">Para acceder a la plataforma, primero debes verificar tu cuenta desde el enlace enviado a tu correo electrónico.</p>
-                        <span className="text-xs text-slate-500">Ingresa por el link para activar tu cuenta.</span>
+                        <p className="mb-4 text-slate-700 text-center">Para acceder a la plataforma, primero debes verificar tu cuenta desde el enlace enviado a tu correo electrónico:</p>
+                        <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 mt-2">
+                            <span className="font-semibold text-teal-700">{currentUser.email}</span>
+                            <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(currentUser.email)}`} target="_blank" rel="noopener noreferrer" className="ml-2 px-3 py-1 bg-teal-600 text-white rounded-lg font-semibold shadow hover:bg-teal-700 transition-all duration-300 text-xs">Abrir Gmail</a>
+                        </div>
+                        <span className="text-xs text-slate-500 mt-2">Ingresa por el link para activar tu cuenta.</span>
+                        <button type="button" className={`mt-6 px-6 py-2 rounded-lg font-semibold shadow transition-all duration-300 text-sm ${canResend ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`} onClick={handleResend} disabled={!canResend}>
+                            Reenviar correo de verificación
+                        </button>
+                        {resendMsg && <span className="text-green-600 text-sm mt-2 animate-pulse">{resendMsg}</span>}
                     </div>
                 </div>
             );
         }
+    }
+
+            if (hash === '#onboarding') {
+                return <React.Suspense fallback={<Spinner large />}>
+                    <OnboardingWizard />
+                </React.Suspense>;
+            }
+
+            // Bloquear acceso si el email no está verificado
+            if (currentUser && currentUser.email && window.location.hash !== '#onboarding' && window.location.hash !== '#view/' && window.location.hash !== '#login') {
+                    // auth.currentUser puede ser null en algunos reloads, así que verifica emailVerified solo si existe
+                    const isVerified = typeof window !== 'undefined' && window.localStorage.getItem('quellin.currentUser') && (window.localStorage.getItem('quellin.currentUser').includes('emailVerified') ? JSON.parse(window.localStorage.getItem('quellin.currentUser') || '{}').emailVerified : (typeof auth !== 'undefined' && auth.currentUser ? auth.currentUser.emailVerified : false));
+                    if (!isVerified) {
+                        // Solo render condicional, hooks ya están arriba
+                        return (
+                            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
+                                <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center">
+                                    <h2 className="text-2xl font-bold mb-4 text-teal-700">Verifica tu correo</h2>
+                                    <p className="mb-4 text-slate-700 text-center">Para acceder a la plataforma, primero debes verificar tu cuenta desde el enlace enviado a tu correo electrónico:</p>
+                                    <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 mt-2">
+                                        <span className="font-semibold text-teal-700">{currentUser.email}</span>
+                                        <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(currentUser.email)}`} target="_blank" rel="noopener noreferrer" className="ml-2 px-3 py-1 bg-teal-600 text-white rounded-lg font-semibold shadow hover:bg-teal-700 transition-all duration-300 text-xs">Abrir Gmail</a>
+                                    </div>
+                                    <span className="text-xs text-slate-500 mt-2">Ingresa por el link para activar tu cuenta.</span>
+                                    <button type="button" className={`mt-6 px-6 py-2 rounded-lg font-semibold shadow transition-all duration-300 text-sm ${canResend ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`} onClick={handleResend} disabled={!canResend}>
+                                        Reenviar correo de verificación
+                                    </button>
+                                    {resendMsg && <span className="text-green-600 text-sm mt-2 animate-pulse">{resendMsg}</span>}
+                                </div>
+                            </div>
+                        );
+                    }
     }
 
     // Hide the static index.html global loader as soon as React mounts so our
@@ -103,7 +207,7 @@ const App: React.FC = () => {
     }
   }, [contentForAnalytics, getSubmissionsForContent]);
   
-        const [showWelcomeLoader, setShowWelcomeLoader] = React.useState(false);
+    // ...existing code...
 
         // When authLoading becomes true, show the welcome loader for a min duration
         React.useEffect(() => {
