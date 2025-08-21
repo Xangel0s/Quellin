@@ -38,8 +38,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [currentUser, setCurrentUser] = useState<any>(getUserFromLocalStorage());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const { addToast, openProfileModal } = useUI();
-       const [showProfileModal, setShowProfileModal] = useState(false);
+    const { addToast } = useUI();
 
     useEffect(() => {
         setLoading(true);
@@ -60,10 +59,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 };
                 setCurrentUser(userObj);
                 saveUserToLocalStorage(userObj);
-                // Si el usuario está verificado pero no tiene perfil, abrir modal de perfil
-                if (user.emailVerified && !profile) {
-                    setShowProfileModal(true);
-                    try { openProfileModal(); } catch {}
+                // Si el usuario no tiene perfil, redirigir al onboarding full-screen
+                if (!profile) {
+                    try {
+                        addToast('Completa tu perfil para continuar', 'info');
+                    } catch {}
+                    // Navigate to onboarding wizard
+                    try { window.location.hash = '#onboarding'; } catch {}
                 }
             } else {
                 setCurrentUser(null);
