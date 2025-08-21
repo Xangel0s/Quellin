@@ -6,7 +6,6 @@ import Spinner from '../components/Spinner';
 import { QuillanLogo } from '../components/icons';
 import { UserCircleIcon, CheckIcon } from '../components/icons';
 import RegistrationSuccessModal from '../components/RegistrationSuccessModal';
-import ProfileModal from '../components/ProfileModal';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
@@ -15,7 +14,6 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { signIn, signUp, loading, error, setError } = useAuth();
 
@@ -52,7 +50,6 @@ export default function LoginPage() {
       const success = await signUp(email, password);
       if (success) {
         setShowSuccessModal(true);
-        setShowProfileModal(true); // Mostrar modal de perfil tras registro
       }
     } else {
       await signIn(email, password);
@@ -69,7 +66,7 @@ export default function LoginPage() {
     </div>
   );
 
-  if (showSuccessModal || showProfileModal) {
+  if (showSuccessModal) {
     return (
       <>
         {showSuccessModal && (
@@ -84,9 +81,6 @@ export default function LoginPage() {
             }}
             // onResend eliminado, ya no existe resendConfirmation
           />
-        )}
-        {showProfileModal && (
-          <ProfileModal />
         )}
       </>
     );
