@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db, auth } from '../services/firebase';
 import { useUI } from '../contexts/UIContext';
@@ -29,12 +29,13 @@ const OnboardingWizard: React.FC = () => {
   const [showResend, setShowResend] = useState(false);
   const [profileCreated, setProfileCreated] = useState(false);
   const [animatingNext, setAnimatingNext] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
 
   const handleNext = async () => {
-    // Small animation before changing step
-    setAnimatingNext(true);
-    await new Promise(res => setTimeout(res, 220));
-    setAnimatingNext(false);
+  // Small exit animation before changing step
+  setAnimatingNext(true);
+  await new Promise(res => setTimeout(res, 220));
 
     if (step === 1) {
       setLoading(true);
@@ -55,30 +56,39 @@ const OnboardingWizard: React.FC = () => {
         setProfileCreated(true);
         // After creating profile, send verification email with actionCodeSettings
         try {
+          setSendingVerification(true);
           const { sendEmailVerification } = await import('firebase/auth');
           const actionCodeSettings = {
             url: window.location.origin + window.location.pathname,
             handleCodeInApp: false,
           } as any;
-          if (auth.currentUser) {
-            await sendEmailVerification(auth.currentUser, actionCodeSettings);
-            addToast('Correo de verificación enviado. Revisa tu bandeja (y spam).', 'success');
-          } else {
+            if (auth.currentUser) {
+              await sendEmailVerification(auth.currentUser, actionCodeSettings);
+              addToast('Correo de verificación enviado. Revisa tu bandeja (y spam).', 'success');
+              // start cooldown/countdown
+              setResendSeconds(30);
+              setShowResend(true);
+            } else {
             addToast('No se pudo enviar el correo: usuario no autenticado.', 'error');
           }
         } catch (err: any) {
           addToast('No se pudo enviar el correo de verificación: ' + (err?.message || ''), 'error');
+        } finally {
+          setSendingVerification(false);
         }
       } catch (err: any) {
         setError('Error al guardar el perfil.');
       }
       setLoading(false);
     }
-    setStep(step + 1);
+  // advance to next step after exit animation
+  setStep(step + 1);
+  // allow entry animation for new step
+  setAnimatingNext(false);
   };
 
   const handleResend = async () => {
-    if (showResend) return; // cooldown
+    if (showResend || resendSeconds > 0) return; // cooldown
     setLoading(true);
     try {
       const { sendEmailVerification } = await import('firebase/auth');
@@ -87,10 +97,13 @@ const OnboardingWizard: React.FC = () => {
         handleCodeInApp: false,
       } as any;
       if (auth.currentUser) {
+        setSendingVerification(true);
         await sendEmailVerification(auth.currentUser, actionCodeSettings);
-        setShowResend(true);
         addToast('Correo reenviado. Revisa tu bandeja (y spam).', 'success');
-        setTimeout(() => setShowResend(false), 30000);
+        // start cooldown/countdown (useEffect will start the interval)
+        setShowResend(true);
+        setResendSeconds(30);
+        setSendingVerification(false);
       } else {
         addToast('No se pudo reenviar: usuario no autenticado.', 'error');
       }
@@ -99,6 +112,38 @@ const OnboardingWizard: React.FC = () => {
     }
     setLoading(false);
   };
+
+  // Manage a single interval for the resend countdown
+  const intervalRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (resendSeconds > 0 && intervalRef.current == null) {
+      intervalRef.current = window.setInterval(() => {
+        setResendSeconds(s => {
+          if (s <= 1) {
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
+            setShowResend(false);
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      // keep interval running until it naturally clears; cleanup on unmount
+    };
+  }, [resendSeconds]);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
@@ -183,10 +228,12 @@ const OnboardingWizard: React.FC = () => {
                 <span className="font-semibold text-teal-700">{currentUser.email}</span>
                 <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(currentUser.email)}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-teal-600 underline transform transition-transform duration-200 hover:scale-105">Abrir Gmail</a>
               </div>
-              <button type="button" className={`mt-4 px-6 py-2 bg-teal-600 text-white rounded-lg font-semibold shadow hover:bg-teal-700 transition-transform duration-200 ${showResend ? 'opacity-60 cursor-not-allowed' : ''}`} onClick={handleResend} disabled={loading || showResend}>
-                {showResend ? 'Reenviado ✔' : 'Reenviar correo de verificación'}
-              </button>
-              {showResend && <span className="text-green-600 text-sm mt-2 animate-pulse">Correo reenviado ✔</span>}
+              <div className="flex flex-col items-center">
+                <button type="button" className={`mt-4 px-6 py-2 bg-teal-600 text-white rounded-lg font-semibold shadow transition-transform duration-200 ${showResend || resendSeconds > 0 ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-700'}`} onClick={handleResend} disabled={loading || sendingVerification || showResend || resendSeconds > 0}>
+                  {sendingVerification ? 'Enviando...' : (resendSeconds > 0 ? `Reenviar (${resendSeconds}s)` : (showResend ? 'Reenviado ✔' : 'Reenviar correo de verificación'))}
+                </button>
+                {showResend && <span className="text-green-600 text-sm mt-2 animate-pulse">Correo reenviado ✔</span>}
+              </div>
             </div>
           </>
         )}
