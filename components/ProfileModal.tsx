@@ -61,7 +61,7 @@ const ProfileModal: React.FC = () => {
             return;
         }
 
-        const success = await updatePassword(currentPassword, newPassword);
+    const success = await updatePassword(newPassword);
         if(success) {
             setCurrentPassword('');
             setNewPassword('');

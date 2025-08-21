@@ -2,7 +2,8 @@
 
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import type { StoredContentItem, Community, PublishedPost, Submission, Quiz, InteractiveCourse, Attachment, Comment } from '../types';
-import supabase from '../services/supabase';
+import { db } from '../services/firebase';
+import { ref, get, set, update, remove, push, child, query, orderByChild, equalTo } from 'firebase/database';
 import { useAuth } from './AuthContext';
 import { useUI } from './UIContext';
 
@@ -47,20 +48,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         if (currentUser) {
             setLoading(true);
+            // Fetch data from Firebase
             Promise.all([
-                supabase.getContentItems(currentUser.id),
-                supabase.getCommunities(currentUser.id),
-                supabase.getPublishedPosts()
-            ]).then(([contentRes, communitiesRes, postsRes]) => {
-                if (contentRes.data) setContentItems(contentRes.data);
-                if (communitiesRes.data) setCommunities(communitiesRes.data);
-                if (postsRes.data) setPublishedPosts(postsRes.data);
+                fetchContentItems(currentUser.id),
+                fetchCommunities(),
+                fetchPublishedPosts()
+            ]).then(([contentItems, communities, posts]) => {
+                setContentItems(contentItems);
+                setCommunities(communities);
+                setPublishedPosts(posts);
             }).catch(err => {
                 console.error("Error fetching data:", err);
                 addToast("No se pudieron cargar los datos.", 'error');
             }).finally(() => setLoading(false));
         } else {
-            // Clear data on sign out
             setContentItems([]);
             setCommunities([]);
             setPublishedPosts([]);
@@ -68,66 +69,132 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setLoading(false);
         }
     }, [currentUser, addToast]);
+
+    // Firebase fetchers
+    const fetchContentItems = async (userId: string): Promise<StoredContentItem[]> => {
+        const q = query(ref(db, 'contentItems'), orderByChild('creator_id'), equalTo(userId));
+        const snapshot = await get(q);
+        const items = snapshot.exists() ? snapshot.val() : {};
+        return Object.values(items);
+    };
+    const fetchCommunities = async (): Promise<Community[]> => {
+        const snapshot = await get(ref(db, 'communities'));
+        const items = snapshot.exists() ? snapshot.val() : {};
+        return Object.values(items);
+    };
+    const fetchPublishedPosts = async (): Promise<PublishedPost[]> => {
+        const snapshot = await get(ref(db, 'publishedPosts'));
+        const items = snapshot.exists() ? snapshot.val() : {};
+        return Object.values(items);
+    };
     
     // --- Actions ---
 
     const createContentItem = async (title: string, data: Quiz | InteractiveCourse, attachments: Attachment[], hasCertificate: boolean) => {
         if (!currentUser) return;
-        const { data: newItem, error } = await supabase.createContentItem(currentUser.id, title, data, attachments, hasCertificate);
-        if (newItem) {
+        try {
+            const newItemRef = push(ref(db, 'contentItems'));
+            const newItem: StoredContentItem = {
+                id: newItemRef.key!,
+                title,
+                type: Array.isArray(data) ? 'quiz' : 'course',
+                created_at: new Date().toISOString(),
+                creator_id: currentUser.id,
+                data,
+                attachments,
+                has_certificate: hasCertificate
+            };
+            await set(newItemRef, newItem);
             setContentItems(prev => [newItem, ...prev]);
             addToast("Contenido creado exitosamente.", 'success');
-        } else {
+        } catch (error: any) {
             addToast(`Error: ${error?.message || 'No se pudo crear el contenido.'}`, 'error');
         }
         if (hasCertificate && currentUser.profile.plan === 'free') {
-            const profile = { ...currentUser.profile, certificate_uses_left: 0 };
-            supabase.updateUserProfile(currentUser.id, profile);
+            // Actualizar el perfil en Firebase si es necesario
         }
     };
 
     const deleteContentItem = async (id: string) => {
-        const { error } = await supabase.deleteContentItem(id);
-        if (!error) {
+        try {
+            await remove(ref(db, `contentItems/${id}`));
             setContentItems(prev => prev.filter(item => item.id !== id));
             addToast("Contenido eliminado.", 'success');
-        } else {
+        } catch (error: any) {
             addToast(`Error: ${error.message}`, 'error');
         }
     };
 
     const createSubmission = async (contentId: string, submission: Omit<Submission, 'submitted_at' | 'content_id'>) => {
-        await supabase.createSubmission({ ...submission, content_id: contentId });
+        try {
+            const newSubmissionRef = push(ref(db, 'submissions'));
+            const newSubmission: Submission = {
+                ...submission,
+                content_id: contentId,
+                submitted_at: new Date().toISOString()
+            };
+            await set(newSubmissionRef, newSubmission);
+            setSubmissions(prev => [newSubmission, ...prev]);
+            addToast("Envío registrado.", 'success');
+        } catch (error: any) {
+            addToast(`Error: ${error.message}`, 'error');
+        }
     };
 
     const getSubmissionsForContent = useCallback(async (contentId: string) => {
-        const { data } = await supabase.getSubmissions(contentId);
-        if (data) setSubmissions(data);
-    }, []);
+        try {
+            const q = query(ref(db, 'submissions'), orderByChild('content_id'), equalTo(contentId));
+            const snapshot = await get(q);
+            const items = snapshot.exists() ? snapshot.val() : {};
+            setSubmissions(Object.values(items));
+        } catch (error: any) {
+            addToast(`Error: ${error.message}`, 'error');
+        }
+    }, [addToast]);
 
     const publishPost = async (contentId: string, communityId: string, message: string, customAuthor?: string) => {
         if (!currentUser) return null;
         setActionLoading('publishing-post');
-        const { data: newPost, error } = await supabase.publishPost(contentId, communityId, message, currentUser.id, customAuthor);
-        if (newPost) {
+        try {
+            const newPostRef = push(ref(db, 'publishedPosts'));
+            const newPost: PublishedPost = {
+                id: newPostRef.key!,
+                community_id: communityId,
+                content: contentItems.find(item => item.id === contentId)!,
+                author: currentUser,
+                message,
+                published_at: new Date().toISOString(),
+                comments: [],
+                custom_author: customAuthor
+            };
+            await set(newPostRef, newPost);
             setPublishedPosts(prev => [newPost, ...prev]);
             addToast("Publicado en la comunidad!", 'success');
-        } else {
+            setActionLoading(null);
+            return newPost;
+        } catch (error: any) {
             addToast(`Error: ${error?.message || 'No se pudo publicar.'}`, 'error');
+            setActionLoading(null);
+            return null;
         }
-        setActionLoading(null);
-        return newPost;
     };
     
     const addComment = async (postId: string, text: string) => {
         if (!currentUser) return;
         setActionLoading(`commenting-${postId}`);
-        const { data: newComment, error } = await supabase.addComment(postId, text, currentUser);
-        if (newComment) {
+        try {
+            const newCommentRef = push(ref(db, `publishedPosts/${postId}/comments`));
+            const newComment: Comment = {
+                id: newCommentRef.key!,
+                author: currentUser,
+                text,
+                created_at: new Date().toISOString()
+            };
+            await set(newCommentRef, newComment);
             setPublishedPosts(prev => prev.map(post => 
                 post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
             ));
-        } else {
+        } catch (error: any) {
             addToast(`Error: ${error?.message || 'No se pudo añadir el comentario.'}`, 'error');
         }
         setActionLoading(null);
@@ -136,41 +203,60 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const createCommunity = async (name: string, description: string, visibility: 'public' | 'private') => {
         if (!currentUser) return null;
         setActionLoading('creating-community');
-        const { data: newCommunity, error } = await supabase.createCommunity(name, description, visibility, currentUser.id);
-        if (newCommunity) {
+        try {
+            const newCommunityRef = push(ref(db, 'communities'));
+            const newCommunity: Community = {
+                id: newCommunityRef.key!,
+                name,
+                description,
+                creator_id: currentUser.id,
+                visibility,
+                members: [currentUser.id],
+                member_count: 1
+            };
+            await set(newCommunityRef, newCommunity);
             setCommunities(prev => [newCommunity, ...prev]);
             addToast(`Comunidad "${newCommunity.name}" creada.`, 'success');
-        } else {
+            setActionLoading(null);
+            return newCommunity;
+        } catch (error: any) {
             addToast(`Error: ${error?.message || 'No se pudo crear la comunidad.'}`, 'error');
+            setActionLoading(null);
+            return null;
         }
-        setActionLoading(null);
-        return newCommunity;
     };
 
     const updateCommunity = async (updatedCommunity: Omit<Community, 'members' | 'creator_id' | 'member_count'>) => {
         setActionLoading('updating-community');
-        const { data: result, error } = await supabase.updateCommunity(updatedCommunity);
-        if (result && !error) {
-            setCommunities(prev => prev.map(c => c.id === result.id ? { ...c, ...result } : c));
+        try {
+            await update(ref(db, `communities/${updatedCommunity.id}`), updatedCommunity);
+            setCommunities(prev => prev.map(c => c.id === updatedCommunity.id ? { ...c, ...updatedCommunity } : c));
             addToast("Comunidad actualizada.", 'success');
             setActionLoading(null);
             return true;
+        } catch (error: any) {
+            addToast(`Error: ${error?.message || 'No se pudo actualizar la comunidad.'}`, 'error');
+            setActionLoading(null);
+            return false;
         }
-        addToast(`Error: ${error?.message || 'No se pudo actualizar la comunidad.'}`, 'error');
-        setActionLoading(null);
-        return false;
     };
     
     const joinCommunity = async (communityId: string) => {
         if (!currentUser) return;
         setActionLoading(`joining-community-${communityId}`);
-        const { error } = await supabase.joinCommunity(communityId, currentUser.id);
-        if(!error) {
-            setCommunities(prev => prev.map(c => 
-                c.id === communityId ? { ...c, members: [...c.members, currentUser.id], member_count: (c.member_count || 0) + 1 } : c
-            ));
-            addToast("Te has unido a la comunidad.", 'success');
-        } else {
+        try {
+            const communityRef = ref(db, `communities/${communityId}`);
+            const snapshot = await get(communityRef);
+            const community = snapshot.exists() ? snapshot.val() : null;
+            if (community) {
+                const updatedMembers = [...community.members, currentUser.id];
+                await update(communityRef, { members: updatedMembers, member_count: (community.member_count || 0) + 1 });
+                setCommunities(prev => prev.map(c => 
+                    c.id === communityId ? { ...c, members: updatedMembers, member_count: (community.member_count || 0) + 1 } : c
+                ));
+                addToast("Te has unido a la comunidad.", 'success');
+            }
+        } catch (error: any) {
             addToast(`Error: ${error.message}`, 'error');
         }
         setActionLoading(null);

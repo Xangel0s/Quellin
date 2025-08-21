@@ -1,4 +1,4 @@
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+// import type { User as SupabaseUser } from '@supabase/supabase-js'; // Eliminado
 
 export const PLANS = {
   free: { name: 'Gratuito', limits: { content: 3, attachments: 0 }, features: { analytics: false, customBranding: false, certificates: true } },

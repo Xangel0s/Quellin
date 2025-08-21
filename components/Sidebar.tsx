@@ -14,8 +14,15 @@ const Sidebar: React.FC = () => {
     const { contentItems } = useData();
     const { view, navigate } = useUI();
 
-    if (!currentUser) return null;
-    
+    // Si no hay usuario o el perfil está incompleto, muestra un loader o mensaje
+    if (!currentUser || !currentUser.profile || !currentUser.profile.plan) {
+        return (
+            <div className="w-64 h-screen flex items-center justify-center bg-white border-r border-slate-200">
+                <span className="text-slate-400 text-sm">Cargando perfil...</span>
+            </div>
+        );
+    }
+
     const userPlan = PLANS[currentUser.profile.plan];
     const usageLimit = userPlan.limits.content;
     const contentCount = contentItems.length;

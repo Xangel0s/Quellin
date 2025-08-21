@@ -9,7 +9,7 @@ import Button from '../components/Button';
 import Avatar from '../components/Avatar';
 import Spinner from '../components/Spinner';
 import { QuillanLogo, UserCircleIcon, CheckIcon } from '../components/icons';
-import supabase from '../services/supabase';
+// import supabase from '../services/supabase'; // Eliminado
 import { useUI } from '../contexts/UIContext';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,25 +31,29 @@ const ViewerPage: React.FC<ViewerPageProps> = ({ contentId }) => {
     const [hasStarted, setHasStarted] = useState(false);
     const [isComplete, setIsComplete] = useState(false);
 
-    useEffect(() => {
-        const fetchContentData = async () => {
-            setLoading(true);
-            const { data: postData } = await supabase.getPostByContentId(contentId);
-            if (postData) {
-                setContent(postData);
-                setAuthor(postData.author);
-            } else {
-                const { data: contentItemData } = await supabase.getContentItemById(contentId);
-                if (contentItemData) {
-                    setContent(contentItemData);
-                    const { data: authorData } = await supabase.getUserById(contentItemData.creator_id);
-                    if (authorData) setAuthor(authorData);
-                }
-            }
-            setLoading(false);
-        };
-        fetchContentData();
-    }, [contentId]);
+  useEffect(() => {
+    setLoading(true);
+    // Buscar el contenido en publishedPosts y contentItems del DataContext
+    let foundContent = null;
+    let foundAuthor = null;
+    // Buscar en publishedPosts
+    if (contentId && typeof contentId === 'string') {
+      const posts = useData().publishedPosts;
+      foundContent = posts.find(post => post.id === contentId) || null;
+      if (foundContent && 'author' in foundContent) {
+        foundAuthor = foundContent.author;
+      }
+      // Si no se encuentra en publishedPosts, buscar en contentItems
+      if (!foundContent) {
+        const items = useData().contentItems;
+        foundContent = items.find(item => item.id === contentId) || null;
+        // El autor se puede buscar en la comunidad o dejar null
+      }
+    }
+    setContent(foundContent);
+    setAuthor(foundAuthor);
+    setLoading(false);
+  }, [contentId, useData]);
 
     if(loading) {
         return <div className="flex h-screen items-center justify-center"><Spinner large /></div>;

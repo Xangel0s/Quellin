@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const { signIn, signUp, resendConfirmation, loading, error, setError } = useAuth();
+  const { signIn, signUp, loading, error, setError } = useAuth();
 
   const [passwordValidity, setPasswordValidity] = useState({
     minLength: false,
@@ -82,7 +82,7 @@ export default function LoginPage() {
                 setPassword('');
                 setConfirmPassword('');
             }}
-            onResend={() => resendConfirmation(email)}
+            // onResend eliminado, ya no existe resendConfirmation
           />
         )}
         {showProfileModal && (
