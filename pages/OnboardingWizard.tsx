@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../services/firebase';
+import { db, auth } from '../services/firebase';
+import { useUI } from '../contexts/UIContext';
 
 const steps = [
   'nombre',
@@ -18,6 +19,7 @@ const roleOptions = [
 
 const OnboardingWizard: React.FC = () => {
   const { currentUser, setError } = useAuth();
+  const { addToast } = useUI();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
@@ -26,8 +28,14 @@ const OnboardingWizard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showResend, setShowResend] = useState(false);
   const [profileCreated, setProfileCreated] = useState(false);
+  const [animatingNext, setAnimatingNext] = useState(false);
 
   const handleNext = async () => {
+    // Small animation before changing step
+    setAnimatingNext(true);
+    await new Promise(res => setTimeout(res, 220));
+    setAnimatingNext(false);
+
     if (step === 1) {
       setLoading(true);
       try {
@@ -45,6 +53,22 @@ const OnboardingWizard: React.FC = () => {
         };
         await set(ref(db, `profiles/${currentUser.id}`), profile);
         setProfileCreated(true);
+        // After creating profile, send verification email with actionCodeSettings
+        try {
+          const { sendEmailVerification } = await import('firebase/auth');
+          const actionCodeSettings = {
+            url: window.location.origin + window.location.pathname,
+            handleCodeInApp: false,
+          } as any;
+          if (auth.currentUser) {
+            await sendEmailVerification(auth.currentUser, actionCodeSettings);
+            addToast('Correo de verificación enviado. Revisa tu bandeja (y spam).', 'success');
+          } else {
+            addToast('No se pudo enviar el correo: usuario no autenticado.', 'error');
+          }
+        } catch (err: any) {
+          addToast('No se pudo enviar el correo de verificación: ' + (err?.message || ''), 'error');
+        }
       } catch (err: any) {
         setError('Error al guardar el perfil.');
       }
@@ -54,14 +78,24 @@ const OnboardingWizard: React.FC = () => {
   };
 
   const handleResend = async () => {
+    if (showResend) return; // cooldown
     setLoading(true);
     try {
       const { sendEmailVerification } = await import('firebase/auth');
-      await sendEmailVerification(currentUser);
-      setShowResend(true);
-      setTimeout(() => setShowResend(false), 3000);
-    } catch {
-      setError('No se pudo reenviar el correo.');
+      const actionCodeSettings = {
+        url: window.location.origin + window.location.pathname,
+        handleCodeInApp: false,
+      } as any;
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser, actionCodeSettings);
+        setShowResend(true);
+        addToast('Correo reenviado. Revisa tu bandeja (y spam).', 'success');
+        setTimeout(() => setShowResend(false), 30000);
+      } else {
+        addToast('No se pudo reenviar: usuario no autenticado.', 'error');
+      }
+    } catch (err: any) {
+      setError('No se pudo reenviar el correo: ' + (err?.message || ''));
     }
     setLoading(false);
   };
@@ -69,9 +103,9 @@ const OnboardingWizard: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 animate-fadeIn">
-        {step === 0 && (
+    {step === 0 && (
           <>
-            <h2 className="text-2xl font-bold mb-4 text-teal-700">¿Cómo te llamas?</h2>
+      <h2 className="text-2xl font-bold mb-4 text-teal-700">¿Cómo te llamas?</h2>
             <div className="flex gap-3 mb-6">
               <input
                 name="name"
@@ -94,14 +128,14 @@ const OnboardingWizard: React.FC = () => {
                 maxLength={20}
               />
             </div>
-            <button type="button" className="w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-all duration-300" onClick={handleNext} disabled={!name || !surname}>
+            <button type="button" className={`w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-transform duration-200 ${animatingNext ? 'scale-95 opacity-70' : ''}`} onClick={handleNext} disabled={!name || !surname}>
               Siguiente
             </button>
           </>
         )}
         {step === 1 && (
           <>
-            <h2 className="text-2xl font-bold mb-4 text-teal-700">Personaliza tu perfil</h2>
+            <h2 className="text-2xl font-bold mb-4 text-teal-700">¿A qué te dedicas?</h2>
             <textarea
               name="bio"
               value={bio}
@@ -119,7 +153,7 @@ const OnboardingWizard: React.FC = () => {
                 ))}
               </div>
             </div>
-            <button type="button" className="w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-all duration-300" onClick={handleNext} disabled={loading || !bio}>
+            <button type="button" className={`w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-transform duration-200 ${animatingNext ? 'scale-95 opacity-70' : ''}`} onClick={handleNext} disabled={loading || !bio}>
               Siguiente
             </button>
           </>
@@ -135,7 +169,7 @@ const OnboardingWizard: React.FC = () => {
               <span className="text-base text-teal-700 font-medium">{roleOptions.find(r => r.value === role)?.label}</span>
               <p className="text-slate-600 text-center">{bio}</p>
             </div>
-            <button type="button" className="w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-all duration-300" onClick={handleNext}>
+            <button type="button" className={`w-full px-6 py-3 bg-teal-600 text-white rounded-xl font-semibold shadow-md hover:bg-teal-700 transition-transform duration-200 ${animatingNext ? 'scale-95 opacity-70' : ''}`} onClick={handleNext}>
               Crear usuario
             </button>
           </>
@@ -147,10 +181,10 @@ const OnboardingWizard: React.FC = () => {
               <p className="text-base text-slate-700 text-center">Para activar tu cuenta, verifica tu correo electrónico:</p>
               <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-4 py-2 mt-2">
                 <span className="font-semibold text-teal-700">{currentUser.email}</span>
-                <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(currentUser.email)}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-teal-600 underline">Abrir Gmail</a>
+                <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(currentUser.email)}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-teal-600 underline transform transition-transform duration-200 hover:scale-105">Abrir Gmail</a>
               </div>
-              <button type="button" className="mt-4 px-6 py-2 bg-teal-600 text-white rounded-lg font-semibold shadow hover:bg-teal-700 transition-all duration-300" onClick={handleResend} disabled={loading}>
-                Reenviar correo de verificación
+              <button type="button" className={`mt-4 px-6 py-2 bg-teal-600 text-white rounded-lg font-semibold shadow hover:bg-teal-700 transition-transform duration-200 ${showResend ? 'opacity-60 cursor-not-allowed' : ''}`} onClick={handleResend} disabled={loading || showResend}>
+                {showResend ? 'Reenviado ✔' : 'Reenviar correo de verificación'}
               </button>
               {showResend && <span className="text-green-600 text-sm mt-2 animate-pulse">Correo reenviado ✔</span>}
             </div>
