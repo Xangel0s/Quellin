@@ -100,7 +100,7 @@ const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ contentItem, submissions 
                                 </tr>
                             </thead>
                             <tbody>
-                                {Object.entries(studentData).sort(([, statsA], [, statsB]) => new Date(statsB.lastAttempt).getTime() - new Date(statsA.lastAttempt).getTime()).map(([name, stats]) => (
+                                {(Object.entries(studentData) as [string, StudentStats][]).sort(([, statsA], [, statsB]) => new Date(statsB.lastAttempt).getTime() - new Date(statsA.lastAttempt).getTime()).map(([name, stats]) => (
                                     <React.Fragment key={name}>
                                     <tr className="bg-white border-b hover:bg-slate-50">
                                         <th scope="row" className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">

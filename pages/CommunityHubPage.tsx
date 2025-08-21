@@ -19,7 +19,7 @@ const CommunityHubPage: React.FC = () => {
     const myCommunities = communities.filter(c => c.members.includes(currentUser.id));
     const exploreCommunities = communities.filter(c => !c.members.includes(currentUser.id) && c.visibility === 'public');
 
-    const CommunityCard = ({ community }: { community: Community }) => {
+    const CommunityCard: React.FC<{ community: Community }> = ({ community }) => {
         const isMember = community.members.includes(currentUser.id);
         const isCreator = community.creator_id === currentUser.id;
         const isJoining = actionLoading === `joining-community-${community.id}`;
