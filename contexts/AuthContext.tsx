@@ -56,6 +56,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     id: user.uid,
                     email: user.email,
                     profile,
+                    emailVerified: user.emailVerified ?? false,
                 };
                 setCurrentUser(userObj);
                 saveUserToLocalStorage(userObj);
@@ -83,8 +84,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Firebase modular API
             const { signInWithEmailAndPassword } = await import('firebase/auth');
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            setCurrentUser(userCredential.user);
-            saveUserToLocalStorage(userCredential.user);
+            // Ensure we have the latest emailVerified flag from Firebase
+            try {
+                const { reload } = await import('firebase/auth');
+                if (auth.currentUser) {
+                    await reload(auth.currentUser);
+                }
+            } catch {}
+            const emailVerified = (auth.currentUser && (auth.currentUser.emailVerified ?? false)) || (userCredential.user.emailVerified ?? false);
+            // Normalize and persist a lightweight user object to keep shape consistent
+            const userObj = {
+                id: userCredential.user.uid,
+                email: userCredential.user.email,
+                profile: null,
+                emailVerified,
+            };
+            setCurrentUser(userObj);
+            saveUserToLocalStorage(userObj);
             setLoading(false);
             return true;
         } catch (error: any) {
@@ -109,8 +125,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setCurrentUser(userObj);
             saveUserToLocalStorage(userObj);
             setLoading(false);
-            // Redirigir a la página de completar perfil
-            window.location.hash = '#complete-profile';
+            // Redirigir a la página de onboarding
+            window.location.hash = '#onboarding';
             return true;
         } catch (error: any) {
             setError(error.message || 'Ocurrió un error al registrar.');

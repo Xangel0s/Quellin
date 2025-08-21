@@ -46,7 +46,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Initial data fetching for authenticated user
     useEffect(() => {
-        if (currentUser) {
+        // Ensure we have a valid user id before fetching
+        if (currentUser && currentUser.id) {
             setLoading(true);
             // Fetch data from Firebase
             Promise.all([
@@ -71,10 +72,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [currentUser, addToast]);
 
     // Firebase fetchers
-    const fetchContentItems = async (userId: string): Promise<StoredContentItem[]> => {
+    const fetchContentItems = async (userId?: string): Promise<StoredContentItem[]> => {
+        if (!userId) return [];
         const q = query(ref(db, 'contentItems'), orderByChild('creator_id'), equalTo(userId));
         const snapshot = await get(q);
         const items = snapshot.exists() ? snapshot.val() : {};
+        // If items is not an object, return empty
+        if (!items || typeof items !== 'object') return [];
         return Object.values(items);
     };
     const fetchCommunities = async (): Promise<Community[]> => {

@@ -45,7 +45,7 @@ const App: React.FC = () => {
         upgradeReason,
         closeAllModals,
         navigate
-    } = useUI();
+    , addToast } = useUI();
     const { getSubmissionsForContent, submissions, loading: dataLoading } = useData();
     const hash = window.location.hash;
 
@@ -94,6 +94,39 @@ const App: React.FC = () => {
             window.location.hash = '';
         }
     }, [currentUser, navigate]);
+
+    // Handle Firebase email verification links (mode=verifyEmail&oobCode=...)
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get('mode');
+        const oobCode = params.get('oobCode');
+        if (mode === 'verifyEmail' && oobCode) {
+            (async () => {
+                try {
+                    const { applyActionCode, reload } = await import('firebase/auth');
+                    await applyActionCode(auth, oobCode);
+                    // Force reload of auth user and persist verified flag
+                    try { await reload(auth.currentUser); } catch {}
+                    const stored = window.localStorage.getItem('quellin.currentUser');
+                    if (stored) {
+                        try {
+                            const obj = JSON.parse(stored);
+                            obj.emailVerified = true;
+                            window.localStorage.setItem('quellin.currentUser', JSON.stringify(obj));
+                        } catch {}
+                    }
+                    addToast('Correo verificado correctamente. Por favor inicia sesión.', 'success');
+                    // Remove query params to avoid re-processing on reload
+                    const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+                    window.history.replaceState({}, document.title, cleanUrl);
+                    // Redirect user to login view
+                    window.location.hash = '#login';
+                } catch (err: any) {
+                    addToast('No fue posible verificar el correo: ' + (err?.message || ''), 'error');
+                }
+            })();
+        }
+    }, [addToast]);
 
     React.useEffect(() => {
         if (contentForAnalytics) {
