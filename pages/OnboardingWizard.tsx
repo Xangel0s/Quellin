@@ -56,7 +56,8 @@ const OnboardingWizard: React.FC = () => {
       try {
         const { sendEmailVerification } = await import('firebase/auth');
         if (auth.currentUser) {
-          const actionCodeSettings = { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
+          const canonicalUrl = (import.meta as any).env.MODE === 'production' ? 'https://quellin.netlify.app' : window.location.origin + window.location.pathname;
+          const actionCodeSettings = { url: canonicalUrl, handleCodeInApp: false };
           await sendEmailVerification(auth.currentUser, actionCodeSettings);
         }
       } catch (e) {
@@ -74,13 +75,42 @@ const OnboardingWizard: React.FC = () => {
     setLoading(true);
     try {
       const { sendEmailVerification } = await import('firebase/auth');
+      // Esperar un poco a que auth.currentUser esté disponible
+      const start = Date.now();
+      while (!auth.currentUser && Date.now() - start < 3000) {
+        // small wait
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 200));
+      }
       if (!auth.currentUser) {
         setError('No se pudo reenviar: usuario no autenticado.');
         setLoading(false);
         return;
       }
-      const actionCodeSettings = { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
-      await sendEmailVerification(auth.currentUser, actionCodeSettings);
+
+  const canonicalUrl = (import.meta as any).env.MODE === 'production' ? 'https://quellin.netlify.app' : window.location.origin + window.location.pathname;
+  const actionCodeSettings = { url: canonicalUrl, handleCodeInApp: false };
+      // Forzar refresh del idToken para evitar INVALID_ID_TOKEN
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await auth.currentUser.getIdToken(true);
+      } catch (tokErr: any) {
+        // No bloqueante, pero lo registramos
+        // eslint-disable-next-line no-console
+        console.warn('getIdToken failed before sendEmailVerification:', tokErr);
+      }
+
+      try {
+        await sendEmailVerification(auth.currentUser, actionCodeSettings);
+      } catch (sendErr: any) {
+        // Mostrar mensaje detallado para diagnóstico
+        const msg = (sendErr && (sendErr.code || sendErr.message)) ? (sendErr.code || sendErr.message) : String(sendErr);
+        setError('No se pudo reenviar el correo: ' + msg);
+        // eslint-disable-next-line no-console
+        console.error('sendEmailVerification error:', sendErr);
+        setLoading(false);
+        return;
+      }
       setShowResend(true);
       setTimeout(() => setShowResend(false), 3000);
     } catch {

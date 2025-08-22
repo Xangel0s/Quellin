@@ -102,7 +102,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 // Enviar correo de verificación inmediatamente usando el user devuelto
                 try {
-                    const actionCodeSettings = { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
+                    const canonicalUrl = (import.meta as any).env.MODE === 'production' ? 'https://quellin.netlify.app' : window.location.origin;
+                    const actionCodeSettings = { url: canonicalUrl, handleCodeInApp: false };
                     if (userCredential && userCredential.user) {
                         await sendEmailVerification(userCredential.user, actionCodeSettings);
                     }
