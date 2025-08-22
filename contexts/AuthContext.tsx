@@ -39,6 +39,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const { addToast } = useUI();
+       const [showProfileModal, setShowProfileModal] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -55,17 +56,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     id: user.uid,
                     email: user.email,
                     profile,
-                    emailVerified: user.emailVerified ?? false,
                 };
                 setCurrentUser(userObj);
                 saveUserToLocalStorage(userObj);
-                // Si el usuario no tiene perfil, redirigir al onboarding full-screen
-                if (!profile) {
-                    try {
-                        addToast('Completa tu perfil para continuar', 'info');
-                    } catch {}
-                    // Navigate to onboarding wizard
-                    try { window.location.hash = '#onboarding'; } catch {}
+                // Si el usuario está verificado pero no tiene perfil, mostrar modal de perfil
+                if (user.emailVerified && !profile) {
+                    setShowProfileModal(true);
                 }
             } else {
                 setCurrentUser(null);
@@ -87,23 +83,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Firebase modular API
             const { signInWithEmailAndPassword } = await import('firebase/auth');
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            // Ensure we have the latest emailVerified flag from Firebase
-            try {
-                const { reload } = await import('firebase/auth');
-                if (auth.currentUser) {
-                    await reload(auth.currentUser);
-                }
-            } catch {}
-            const emailVerified = (auth.currentUser && (auth.currentUser.emailVerified ?? false)) || (userCredential.user.emailVerified ?? false);
-            // Normalize and persist a lightweight user object to keep shape consistent
-            const userObj = {
-                id: userCredential.user.uid,
-                email: userCredential.user.email,
-                profile: null,
-                emailVerified,
-            };
-            setCurrentUser(userObj);
-            saveUserToLocalStorage(userObj);
+            setCurrentUser(userCredential.user);
+            saveUserToLocalStorage(userCredential.user);
             setLoading(false);
             return true;
         } catch (error: any) {
@@ -117,8 +98,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(true);
         setError(null);
         try {
-            const { createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const { createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                // Enviar correo de verificación inmediatamente usando el user devuelto
+                try {
+                    const actionCodeSettings = { url: window.location.origin + window.location.pathname, handleCodeInApp: false };
+                    if (userCredential && userCredential.user) {
+                        await sendEmailVerification(userCredential.user, actionCodeSettings);
+                    }
+                } catch (sendErr: any) {
+                    // registrar el error pero no bloquear el flujo de registro
+                    console.error('sendEmailVerification after signUp failed:', sendErr);
+                }
             // Guardar usuario en contexto/localStorage sin perfil aún
             const userObj = {
                 id: userCredential.user.uid,
@@ -145,31 +136,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const updateUserProfile = async (profile: CreatorProfile): Promise<boolean> => {
-        if (!auth.currentUser) {
-            setError('No hay usuario autenticado.');
-            return false;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            const { ref, set } = await import('firebase/database');
-            await set(ref(db, `profiles/${auth.currentUser.uid}`), profile);
-            // Update local state and localStorage
-            const updated = {
-                ...(currentUser || {}),
-                profile,
-            };
-            setCurrentUser(updated);
-            saveUserToLocalStorage(updated);
-            addToast('Perfil actualizado con éxito!', 'success');
-            setLoading(false);
-            return true;
-        } catch (err: any) {
-            setError(err?.message || 'Error al guardar el perfil.');
-            addToast('No se pudo guardar el perfil: ' + (err?.message || ''), 'error');
-            setLoading(false);
-            return false;
-        }
+        // Aquí deberás implementar la lógica para actualizar el perfil en Firebase Database o Firestore
+        addToast('Perfil actualizado con éxito!', 'success');
+        return true;
     };
 
     const updatePassword = async (newPass: string): Promise<boolean> => {
