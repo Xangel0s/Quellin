@@ -55,6 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const userObj = {
                     id: user.uid,
                     email: user.email,
+                    emailVerified: user.emailVerified,
                     profile,
                 };
                 setCurrentUser(userObj);
@@ -115,6 +116,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const userObj = {
                 id: userCredential.user.uid,
                 email: userCredential.user.email,
+                emailVerified: userCredential.user.emailVerified,
                 profile: null,
             };
             setCurrentUser(userObj);
