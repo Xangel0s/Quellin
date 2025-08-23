@@ -78,6 +78,30 @@ const App: React.FC = () => {
         if (loader) loader.classList.add('hidden');
     }, []);
 
+    // Handle Firebase email action links (verify email)
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get('mode');
+        const oobCode = params.get('oobCode');
+        if (mode === 'verifyEmail' && oobCode) {
+            (async () => {
+                try {
+                    const { applyActionCode } = await import('firebase/auth');
+                    await applyActionCode(auth, oobCode);
+                    // refresh current user state if possible
+                    try { await auth.currentUser?.reload?.(); } catch {}
+                    // Clean querystring and redirect to onboarding flow
+                    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+                    window.location.hash = '#onboarding';
+                } catch (err) {
+                    // if applyActionCode fails, just log and keep the verifier UI
+                    // eslint-disable-next-line no-console
+                    console.error('Failed to apply email action code:', err);
+                }
+            })();
+        }
+    }, []);
+
     React.useEffect(() => {
         if (!authLoading && !dataLoading) {
             const loader = document.getElementById('global-loader');
