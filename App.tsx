@@ -93,11 +93,11 @@ const App: React.FC = () => {
         if (!currentUser && hash.startsWith('#view/')) {
             const contentId = hash.substring(6);
             navigate('viewer', contentId);
-        } else if (currentUser && hash === '#onboarding') {
-            // Si el usuario está logueado y en onboarding, limpiar hash
-            window.location.hash = '';
         } else if (currentUser && hash && hash !== '#view/' && hash !== '#login') {
-            window.location.hash = '';
+            // Keep '#onboarding' intact so the OnboardingWizard can render after signUp
+            if (hash !== '#onboarding') {
+                window.location.hash = '';
+            }
         }
     }, [currentUser, navigate]);
 
