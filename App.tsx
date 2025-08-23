@@ -88,11 +88,19 @@ const App: React.FC = () => {
                 try {
                     const { applyActionCode } = await import('firebase/auth');
                     await applyActionCode(auth, oobCode);
-                    // refresh current user state if possible
-                    try { await auth.currentUser?.reload?.(); } catch {}
+                    // refresh current user state and token so AuthContext can pick up emailVerified
+                    try { await auth.currentUser?.reload?.(); } catch (e) { /* ignore */ }
+                    try { await auth.currentUser?.getIdToken?.(true); } catch (e) { /* ignore */ }
                     // Clean querystring and redirect to onboarding flow
+                    // Use replaceState to avoid leaving oobCode in the URL
                     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
                     window.location.hash = '#onboarding';
+                    // Reload once so the AuthContext's onAuthStateChanged/onAuth initialization
+                    // picks up the refreshed user object and profile; this prevents needing
+                    // the user to click the link twice.
+                    setTimeout(() => {
+                        try { window.location.reload(); } catch (_) { /* ignore */ }
+                    }, 600);
                 } catch (err) {
                     // if applyActionCode fails, just log and keep the verifier UI
                     // eslint-disable-next-line no-console
