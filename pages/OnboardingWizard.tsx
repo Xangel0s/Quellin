@@ -27,24 +27,59 @@ const OnboardingWizard: React.FC = () => {
   const [showResend, setShowResend] = useState(false);
   const [profileCreated, setProfileCreated] = useState(false);
 
+  // On mount check if a profile already exists for this user. If it does and
+  // the email is already verified, there's no need to show the wizard again
+  // (prevents duplicate profile creation when user opens the verification link).
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!currentUser || !currentUser.id) return;
+      try {
+        const { get, ref } = await import('firebase/database');
+        const snap = await get(ref(db, `profiles/${currentUser.id}`));
+        if (!mounted) return;
+        if (snap && snap.exists()) {
+          setProfileCreated(true);
+          // If already verified, close onboarding and return to the app
+          if (currentUser.emailVerified) {
+            window.location.hash = '';
+          } else {
+            // If profile exists but user is not verified, show the verification step
+            setStep(3);
+          }
+        }
+      } catch (err) {
+        // ignore errors here; the normal flow will allow creating the profile
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUser]);
+
   const handleNext = async () => {
-  if (step === 1) {
+    if (step === 1) {
       setLoading(true);
       try {
-        const { set, ref } = await import('firebase/database');
-        const profile = {
-          name: `${name} ${surname}`.trim(),
-          bio,
-          role,
-          avatar: {
-            color: 'bg-slate-500',
-            initials: name.charAt(0).toUpperCase(),
-          },
-          plan: 'free',
-          certificate_uses_left: 1,
-        };
-        await set(ref(db, `profiles/${currentUser.id}`), profile);
-        setProfileCreated(true);
+        const { get, set, ref } = await import('firebase/database');
+        const profileRef = ref(db, `profiles/${currentUser.id}`);
+        const existing = await get(profileRef);
+        if (!existing || !existing.exists()) {
+          const profile = {
+            name: `${name} ${surname}`.trim(),
+            bio,
+            role,
+            avatar: {
+              color: 'bg-slate-500',
+              initials: name.charAt(0).toUpperCase(),
+            },
+            plan: 'free',
+            certificate_uses_left: 1,
+          };
+          await set(profileRef, profile);
+          setProfileCreated(true);
+        } else {
+          // Profile already exists: mark created and continue
+          setProfileCreated(true);
+        }
       } catch (err: any) {
         setError('Error al guardar el perfil.');
       }
